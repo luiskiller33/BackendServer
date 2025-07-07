@@ -1,9 +1,5 @@
 import mongoose from 'mongoose';
 
-/**
- * Modelo de Producto para la base de datos
- * Representa los artículos disponibles en la tienda
- */
 const productoSchema = new mongoose.Schema({
   nombre: {
     type: String,
@@ -11,49 +7,40 @@ const productoSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'El nombre no puede exceder los 100 caracteres']
   },
-
   descripcion: {
     type: String,
     trim: true
   },
-
   precio: {
     type: Number,
     required: [true, 'El precio es obligatorio'],
     min: [0.01, 'El precio debe ser mayor a 0']
   },
-
-  // Cambiado: ahora es un arreglo de objetos con url y public_id
-  imagenes: [{
-    url: {
-      type: String,
-      required: true
-    },
-    public_id: {
-      type: String,
-      required: true
+  imagenes: [
+    {
+      url: {
+        type: String,
+        required: true
+      },
+      public_id: {
+        type: String,
+        required: true
+      }
     }
-  }],
-
+  ],
   genero: {
     type: String,
-    enum: {
-      values: ['Hombre', 'Mujer', 'Unisex'],
-      message: '{VALUE} no es un género válido'
-    },
+    enum: ['Hombre', 'Mujer', 'Unisex'],
     default: 'Unisex'
   },
-
   categoria: {
     type: String,
     trim: true
   },
-
   coleccion: {
     type: String,
     trim: true
   },
-
   stock: {
     S: {
       type: Number,
@@ -92,10 +79,9 @@ const productoSchema = new mongoose.Schema({
       }
     }
   }
-
 }, { timestamps: true });
 
-productoSchema.pre('save', function(next) {
+productoSchema.pre('save', function (next) {
   const totalStock = this.stock.S + this.stock.M + this.stock.L + this.stock.XL;
   if (totalStock <= 0) {
     next(new Error('El producto debe tener al menos una unidad en stock'));

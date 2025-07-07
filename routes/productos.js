@@ -1,14 +1,13 @@
 import express from 'express';
-import multer from 'multer';
 import Producto from '../models/Producto.js';
 import auth from '../middleware/authMiddleware.js';
-import cloudinary from '../config/cloudinary.js';
-// ✅ Corrección aquí
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const router = express.Router();
 
-// ✅ Almacenamiento en Cloudinary (usando config centralizada)
+// Configurar almacenamiento Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -17,7 +16,6 @@ const storage = new CloudinaryStorage({
     transformation: [{ width: 800, crop: 'limit' }]
   }
 });
-
 const upload = multer({ storage });
 
 // Crear producto
@@ -30,20 +28,25 @@ router.post('/', auth, upload.array('imagenes'), async (req, res) => {
     const stock = typeof req.body.stock === 'string' ? JSON.parse(req.body.stock) : req.body.stock;
 
     const nuevoProducto = new Producto({
-      ...req.body,
-      imagenes,
+      nombre: req.body.nombre,
+      descripcion: req.body.descripcion,
       precio: parseFloat(req.body.precio),
-      stock
+      categoria: req.body.categoria,
+      coleccion: req.body.coleccion,
+      genero: req.body.genero,
+      stock,
+      imagenes
     });
 
     await nuevoProducto.save();
     res.status(201).json(nuevoProducto);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+  } catch (err) {
+    console.error('❌ Error al crear producto:', err);
+    res.status(500).json({ error: err.message || 'Error interno del servidor' });
   }
 });
 
-// Obtener productos con filtros y paginación
+// Obtener productos con filtros
 router.get('/', async (req, res) => {
   try {
     const {
@@ -85,7 +88,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Obtener producto individual
+// Obtener producto por ID
 router.get('/:id', async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
@@ -106,7 +109,6 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
       url: file.path,
       public_id: file.filename
     }));
-
     const imagenesActuales = JSON.parse(req.body.imagenesActuales || '[]');
 
     producto.nombre = req.body.nombre;
@@ -121,11 +123,12 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
     await producto.save();
     res.json(producto);
   } catch (err) {
+    console.error('❌ Error al editar producto:', err);
     res.status(400).json({ error: err.message });
   }
 });
 
-// Eliminar producto y sus imágenes de Cloudinary
+// Eliminar producto
 router.delete('/:id', auth, async (req, res) => {
   try {
     const producto = await Producto.findByIdAndDelete(req.params.id);
@@ -137,13 +140,13 @@ router.delete('/:id', auth, async (req, res) => {
       }
     }
 
-    res.json({ msg: 'Producto e imágenes eliminados correctamente' });
+    res.json({ msg: 'Producto eliminado correctamente' });
   } catch (err) {
     res.status(500).json({ error: 'Error al eliminar producto' });
   }
 });
 
-// Obtener opciones únicas
+// Obtener opciones únicas para autocompletado
 router.get('/opciones/unicas', async (req, res) => {
   try {
     const productos = await Producto.find();
@@ -160,7 +163,7 @@ router.get('/opciones/unicas', async (req, res) => {
 
     res.json({ categorias, colecciones, generos });
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener opciones' });
+    res.status(500).json({ error: 'Error al obtener opciones únicas' });
   }
 });
 
