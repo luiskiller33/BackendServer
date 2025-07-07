@@ -24,16 +24,16 @@ const storage = new CloudinaryStorage({
 });
 const upload = multer({ storage });
 
-
 // Crear producto
 router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, coleccion, genero, stock, imagenesActuales } = req.body;
+    const { nombre, descripcion, precio, categoria, coleccion, genero, stock } = req.body;
 
-    const nuevasImagenes = req.files.map(file => ({
+    // Aseguramos que siempre haya un array de imágenes
+    const nuevasImagenes = req.files ? req.files.map(file => ({
       url: file.path,
       public_id: file.filename || file.public_id
-    }));
+    })) : [];
 
     const producto = new Producto({
       nombre,
@@ -54,7 +54,6 @@ router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   }
 });
 
-
 // Obtener productos
 router.get('/', async (req, res) => {
   try {
@@ -64,7 +63,6 @@ router.get('/', async (req, res) => {
     res.status(500).json({ mensaje: 'Error al obtener productos' });
   }
 });
-
 
 // Obtener producto por ID
 router.get('/:id', async (req, res) => {
@@ -77,21 +75,21 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-
 // Actualizar producto
 router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
     const { nombre, descripcion, precio, categoria, coleccion, genero, stock, imagenesActuales } = req.body;
 
-    const nuevasImagenes = req.files.map(file => ({
+    // Convertir las imágenes actuales a array o dejar vacío
+    const imagenesExistentes = imagenesActuales ? JSON.parse(imagenesActuales) : [];
+
+    // Procesar nuevas imágenes subidas
+    const nuevasImagenes = req.files ? req.files.map(file => ({
       url: file.path,
       public_id: file.filename || file.public_id
-    }));
+    })) : [];
 
-    const imagenesFinales = [
-      ...(JSON.parse(imagenesActuales) || []),
-      ...nuevasImagenes
-    ];
+    const imagenesFinales = [...imagenesExistentes, ...nuevasImagenes];
 
     const productoActualizado = await Producto.findByIdAndUpdate(
       req.params.id,
@@ -115,16 +113,17 @@ router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) =>
   }
 });
 
-
 // Eliminar producto
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
     if (!producto) return res.status(404).json({ mensaje: 'Producto no encontrado' });
 
-    // Eliminar imágenes de Cloudinary
-    for (const img of producto.imagenes) {
-      await cloudinary.uploader.destroy(img.public_id);
+    // Eliminar imágenes de Cloudinary si existen
+    if (producto.imagenes && producto.imagenes.length > 0) {
+      for (const img of producto.imagenes) {
+        await cloudinary.uploader.destroy(img.public_id);
+      }
     }
 
     await producto.deleteOne();
@@ -133,7 +132,6 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     res.status(500).json({ mensaje: 'Error al eliminar producto', error: err.message });
   }
 });
-
 
 // Ruta para obtener opciones únicas de categoría y colección
 router.get('/opciones/unicas', async (req, res) => {

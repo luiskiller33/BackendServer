@@ -16,18 +16,21 @@ const productoSchema = new mongoose.Schema({
     required: [true, 'El precio es obligatorio'],
     min: [0.01, 'El precio debe ser mayor a 0']
   },
-  imagenes: [
-    {
-      url: {
-        type: String,
-        required: true
-      },
-      public_id: {
-        type: String,
-        required: true
+  imagenes: {
+    type: [
+      {
+        url: {
+          type: String,
+          required: true
+        },
+        public_id: {
+          type: String,
+          required: true
+        }
       }
-    }
-  ],
+    ],
+    default: [] // 👈 Garantiza que siempre sea un array
+  },
   genero: {
     type: String,
     enum: ['Hombre', 'Mujer', 'Unisex'],
