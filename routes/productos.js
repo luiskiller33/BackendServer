@@ -2,7 +2,8 @@ import express from 'express';
 import multer from 'multer';
 import Producto from '../models/Producto.js';
 import auth from '../middleware/authMiddleware.js';
-import { cloudinary } from '../config/cloudinary.js'; // ✅ Corrección aquí
+import cloudinary from '../config/cloudinary.js';
+// ✅ Corrección aquí
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const router = express.Router();
