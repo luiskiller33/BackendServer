@@ -5,9 +5,6 @@ import mongoose from 'mongoose';
  * Representa los artículos disponibles en la tienda
  */
 const productoSchema = new mongoose.Schema({
-  /**
-   * Nombre del producto (obligatorio)
-   */
   nombre: {
     type: String,
     required: [true, 'El nombre es obligatorio'],
@@ -15,35 +12,29 @@ const productoSchema = new mongoose.Schema({
     maxlength: [100, 'El nombre no puede exceder los 100 caracteres']
   },
 
-  /**
-   * Descripción del producto (opcional)
-   */
   descripcion: {
     type: String,
     trim: true
   },
 
-  /**
-   * Precio del producto (obligatorio y debe ser > 0)
-   */
   precio: {
     type: Number,
     required: [true, 'El precio es obligatorio'],
     min: [0.01, 'El precio debe ser mayor a 0']
   },
 
-  /**
-   * Rutas de las imágenes del producto (obligatorio al menos una)
-   * ¡Descomenta si quieres requerir al menos una imagen!
-   */
-  imagenes: {
-    type: [String],
-    // validate: [val => val.length > 0, 'Al menos una imagen es obligatoria']
-  },
+  // Cambiado: ahora es un arreglo de objetos con url y public_id
+  imagenes: [{
+    url: {
+      type: String,
+      required: true
+    },
+    public_id: {
+      type: String,
+      required: true
+    }
+  }],
 
-  /**
-   * Género del producto (Hombre, Mujer, Unisex) - default: Unisex
-   */
   genero: {
     type: String,
     enum: {
@@ -53,25 +44,16 @@ const productoSchema = new mongoose.Schema({
     default: 'Unisex'
   },
 
-  /**
-   * Categoría del producto (ej: Camisetas, Pantalones, etc.)
-   */
   categoria: {
     type: String,
     trim: true
   },
 
-  /**
-   * Colección a la que pertenece el producto (ej: Verano 2025)
-   */
   coleccion: {
     type: String,
     trim: true
   },
 
-  /**
-   * Stock por talla
-   */
   stock: {
     S: {
       type: Number,
@@ -113,9 +95,6 @@ const productoSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-/**
- * Middleware pre-save para validar que al menos haya una talla disponible
- */
 productoSchema.pre('save', function(next) {
   const totalStock = this.stock.S + this.stock.M + this.stock.L + this.stock.XL;
   if (totalStock <= 0) {

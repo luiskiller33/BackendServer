@@ -14,7 +14,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Almacenamiento en Cloudinary con carpeta y transformación
+// Almacenamiento en Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -29,12 +29,15 @@ const upload = multer({ storage });
 // Crear producto
 router.post('/', auth, upload.array('imagenes'), async (req, res) => {
   try {
-    const rutasImagenes = req.files.map(file => file.path);
+    const imagenes = req.files.map(file => ({
+      url: file.path,
+      public_id: file.filename
+    }));
     const stock = typeof req.body.stock === 'string' ? JSON.parse(req.body.stock) : req.body.stock;
 
     const nuevoProducto = new Producto({
       ...req.body,
-      imagenes: rutasImagenes,
+      imagenes,
       precio: parseFloat(req.body.precio),
       stock
     });
@@ -105,7 +108,11 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
     const producto = await Producto.findById(req.params.id);
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const nuevasImagenes = req.files.map(file => file.path);
+    const nuevasImagenes = req.files.map(file => ({
+      url: file.path,
+      public_id: file.filename
+    }));
+
     const imagenesActuales = JSON.parse(req.body.imagenesActuales || '[]');
 
     producto.nombre = req.body.nombre;
@@ -130,11 +137,9 @@ router.delete('/:id', auth, async (req, res) => {
     const producto = await Producto.findByIdAndDelete(req.params.id);
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    // Intentar eliminar cada imagen de Cloudinary si es válida
-    for (const imageUrl of producto.imagenes) {
-      const publicId = getCloudinaryPublicId(imageUrl);
-      if (publicId) {
-        await cloudinary.uploader.destroy(publicId);
+    for (const img of producto.imagenes) {
+      if (img.public_id) {
+        await cloudinary.uploader.destroy(img.public_id);
       }
     }
 
@@ -164,18 +169,5 @@ router.get('/opciones/unicas', async (req, res) => {
     res.status(500).json({ error: 'Error al obtener opciones' });
   }
 });
-
-// Función auxiliar para extraer el public_id de una imagen de Cloudinary
-function getCloudinaryPublicId(url) {
-  try {
-    const urlObj = new URL(url);
-    const parts = urlObj.pathname.split('/');
-    const fileName = parts.pop();
-    const publicId = fileName.substring(0, fileName.lastIndexOf('.'));
-    return parts.slice(2).join('/') + '/' + publicId; // omite el 'image/upload'
-  } catch (e) {
-    return null;
-  }
-}
 
 export default router;
