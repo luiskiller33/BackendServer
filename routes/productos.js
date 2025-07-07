@@ -1,187 +1,152 @@
 import express from 'express';
-import Producto from '../models/Producto.js';
-import auth from '../middleware/authMiddleware.js';
-import cloudinary from '../config/cloudinary.js';
-
 import multer from 'multer';
+import { v2 as cloudinary } from 'cloudinary';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
+import Producto from '../models/Producto.js';
+import authMiddleware from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Configuración de Cloudinary + Multer
+// Configurar Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+// Multer con almacenamiento en Cloudinary
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder: 'productos',
+    folder: 'timeless',
     allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation: [{ width: 800, crop: 'limit' }]
-  }
+  },
 });
 const upload = multer({ storage });
 
+
 // Crear producto
-router.post('/', auth, upload.array('imagenes'), async (req, res) => {
+router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
-    const imagenes = Array.isArray(req.files)
-      ? req.files.map(file => ({
-          url: file.path,
-          public_id: file.filename
-        }))
-      : [];
+    const { nombre, descripcion, precio, categoria, coleccion, genero, stock, imagenesActuales } = req.body;
 
-    const stock = typeof req.body.stock === 'string'
-      ? JSON.parse(req.body.stock)
-      : req.body.stock;
+    const nuevasImagenes = req.files.map(file => ({
+      url: file.path,
+      public_id: file.filename || file.public_id
+    }));
 
-    const nuevoProducto = new Producto({
-      nombre: req.body.nombre,
-      descripcion: req.body.descripcion,
-      precio: parseFloat(req.body.precio),
-      categoria: req.body.categoria,
-      coleccion: req.body.coleccion,
-      genero: req.body.genero,
-      stock,
-      imagenes
-    });
-
-    await nuevoProducto.save();
-    res.status(201).json(nuevoProducto);
-  } catch (err) {
-    console.error('❌ Error al crear producto:', err);
-    res.status(500).json({ error: err.message || 'Error interno del servidor' });
-  }
-});
-
-// Obtener productos con filtros
-router.get('/', async (req, res) => {
-  try {
-    const {
-      page = 1,
-      limit = 12,
+    const producto = new Producto({
+      nombre,
+      descripcion,
+      precio,
       categoria,
       coleccion,
       genero,
-      talla,
-      busqueda,
-      sort = 'recientes'
-    } = req.query;
-
-    const filtros = {};
-    if (busqueda) filtros.nombre = { $regex: busqueda, $options: 'i' };
-    if (categoria) filtros.categoria = categoria;
-    if (coleccion) filtros.coleccion = coleccion;
-    if (genero) filtros.genero = genero;
-    if (talla && talla !== 'Todas') filtros[`stock.${talla}`] = { $gt: 0 };
-
-    let orden = { createdAt: -1 };
-    if (sort === 'precio_asc') orden = { precio: 1 };
-    else if (sort === 'precio_desc') orden = { precio: -1 };
-
-    const total = await Producto.countDocuments(filtros);
-    const productos = await Producto.find(filtros)
-      .sort(orden)
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
-
-    res.json({
-      productos,
-      total,
-      page: parseInt(page),
-      totalPages: Math.ceil(total / limit)
+      stock: JSON.parse(stock),
+      imagenes: nuevasImagenes
     });
+
+    await producto.save();
+    res.status(201).json(producto);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener productos' });
+    console.error('❌ Error al crear producto:', err);
+    res.status(500).json({ mensaje: 'Error al crear el producto', error: err.message });
   }
 });
+
+
+// Obtener productos
+router.get('/', async (req, res) => {
+  try {
+    const productos = await Producto.find().sort({ createdAt: -1 });
+    res.json(productos);
+  } catch (err) {
+    res.status(500).json({ mensaje: 'Error al obtener productos' });
+  }
+});
+
 
 // Obtener producto por ID
 router.get('/:id', async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
-    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+    if (!producto) return res.status(404).json({ mensaje: 'Producto no encontrado' });
     res.json(producto);
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener producto' });
+    res.status(500).json({ mensaje: 'Error al obtener producto' });
   }
 });
 
-// Editar producto
-router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
+
+// Actualizar producto
+router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
-    const producto = await Producto.findById(req.params.id);
-    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+    const { nombre, descripcion, precio, categoria, coleccion, genero, stock, imagenesActuales } = req.body;
 
-    const nuevasImagenes = Array.isArray(req.files)
-      ? req.files.map(file => ({
-          url: file.path,
-          public_id: file.filename
-        }))
-      : [];
+    const nuevasImagenes = req.files.map(file => ({
+      url: file.path,
+      public_id: file.filename || file.public_id
+    }));
 
-    let imagenesActuales = [];
-    try {
-      imagenesActuales = JSON.parse(req.body.imagenesActuales || '[]');
-    } catch (e) {
-      imagenesActuales = [];
-    }
+    const imagenesFinales = [
+      ...(JSON.parse(imagenesActuales) || []),
+      ...nuevasImagenes
+    ];
 
-    const stock = typeof req.body.stock === 'string'
-      ? JSON.parse(req.body.stock)
-      : req.body.stock;
+    const productoActualizado = await Producto.findByIdAndUpdate(
+      req.params.id,
+      {
+        nombre,
+        descripcion,
+        precio,
+        categoria,
+        coleccion,
+        genero,
+        stock: JSON.parse(stock),
+        imagenes: imagenesFinales
+      },
+      { new: true }
+    );
 
-    producto.nombre = req.body.nombre;
-    producto.descripcion = req.body.descripcion;
-    producto.precio = parseFloat(req.body.precio);
-    producto.categoria = req.body.categoria;
-    producto.coleccion = req.body.coleccion;
-    producto.genero = req.body.genero;
-    producto.stock = stock;
-    producto.imagenes = [...imagenesActuales, ...nuevasImagenes];
-
-    await producto.save();
-    res.json(producto);
+    res.json(productoActualizado);
   } catch (err) {
-    console.error('❌ Error al editar producto:', err);
-    res.status(400).json({ error: err.message });
+    console.error('❌ Error al actualizar producto:', err);
+    res.status(500).json({ mensaje: 'Error al actualizar el producto', error: err.message });
   }
 });
+
 
 // Eliminar producto
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authMiddleware, async (req, res) => {
   try {
-    const producto = await Producto.findByIdAndDelete(req.params.id);
-    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+    const producto = await Producto.findById(req.params.id);
+    if (!producto) return res.status(404).json({ mensaje: 'Producto no encontrado' });
 
+    // Eliminar imágenes de Cloudinary
     for (const img of producto.imagenes) {
-      if (img.public_id) {
-        await cloudinary.uploader.destroy(img.public_id);
-      }
+      await cloudinary.uploader.destroy(img.public_id);
     }
 
-    res.json({ msg: 'Producto eliminado correctamente' });
+    await producto.deleteOne();
+    res.json({ mensaje: 'Producto eliminado correctamente' });
   } catch (err) {
-    res.status(500).json({ error: 'Error al eliminar producto' });
+    res.status(500).json({ mensaje: 'Error al eliminar producto', error: err.message });
   }
 });
 
-// Opciones únicas (categorías, colecciones, géneros)
+
+// Ruta para obtener opciones únicas de categoría y colección
 router.get('/opciones/unicas', async (req, res) => {
   try {
-    const productos = await Producto.find();
+    const productos = await Producto.find({}, 'categoria coleccion');
 
-    const normalizar = (texto) => {
-      if (!texto) return '';
-      const limpio = texto.trim().toLowerCase();
-      return limpio.charAt(0).toUpperCase() + limpio.slice(1);
-    };
+    const categorias = [...new Set(productos.map(p => p.categoria).filter(Boolean))];
+    const colecciones = [...new Set(productos.map(p => p.coleccion).filter(Boolean))];
 
-    const categorias = [...new Set(productos.map(p => normalizar(p.categoria)).filter(Boolean))];
-    const colecciones = [...new Set(productos.map(p => normalizar(p.coleccion)).filter(Boolean))];
-    const generos = [...new Set(productos.map(p => normalizar(p.genero)).filter(Boolean))];
-
-    res.json({ categorias, colecciones, generos });
+    res.json({ categorias, colecciones });
   } catch (err) {
-    res.status(500).json({ error: 'Error al obtener opciones únicas' });
+    console.error('❌ Error en /opciones/unicas:', err);
+    res.status(500).json({ mensaje: 'Error al obtener opciones únicas' });
   }
 });
 
