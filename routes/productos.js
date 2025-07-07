@@ -2,33 +2,43 @@ import express from 'express';
 import multer from 'multer';
 import Producto from '../models/Producto.js';
 import auth from '../middleware/authMiddleware.js';
-import path from 'path';
-import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const router = express.Router();
 
-// Configurar multer para guardar imágenes
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
-  },
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + path.extname(file.originalname));
+// Configuración de Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+// Almacenamiento en Cloudinary con carpeta y transformación
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'productos',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+    transformation: [{ width: 800, crop: 'limit' }]
   }
 });
+
 const upload = multer({ storage });
 
-// Crear producto (requiere login)
+// Crear producto
 router.post('/', auth, upload.array('imagenes'), async (req, res) => {
   try {
-    const rutasImagenes = req.files.map(file => '/uploads/' + file.filename);
+    const rutasImagenes = req.files.map(file => file.path);
     const stock = typeof req.body.stock === 'string' ? JSON.parse(req.body.stock) : req.body.stock;
+
     const nuevoProducto = new Producto({
       ...req.body,
       imagenes: rutasImagenes,
       precio: parseFloat(req.body.precio),
       stock
     });
+
     await nuevoProducto.save();
     res.status(201).json(nuevoProducto);
   } catch (error) {
@@ -36,7 +46,7 @@ router.post('/', auth, upload.array('imagenes'), async (req, res) => {
   }
 });
 
-// Obtener productos con paginación y filtros
+// Obtener productos con filtros y paginación
 router.get('/', async (req, res) => {
   try {
     const {
@@ -51,17 +61,11 @@ router.get('/', async (req, res) => {
     } = req.query;
 
     const filtros = {};
-
-    if (busqueda) {
-      filtros.nombre = { $regex: busqueda, $options: 'i' };
-    }
+    if (busqueda) filtros.nombre = { $regex: busqueda, $options: 'i' };
     if (categoria) filtros.categoria = categoria;
     if (coleccion) filtros.coleccion = coleccion;
     if (genero) filtros.genero = genero;
-
-    if (talla && talla !== 'Todas') {
-      filtros[`stock.${talla}`] = { $gt: 0 };
-    }
+    if (talla && talla !== 'Todas') filtros[`stock.${talla}`] = { $gt: 0 };
 
     let orden = { createdAt: -1 };
     if (sort === 'precio_asc') orden = { precio: 1 };
@@ -101,15 +105,8 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
     const producto = await Producto.findById(req.params.id);
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const nuevasImagenes = req.files.map(file => '/uploads/' + file.filename);
+    const nuevasImagenes = req.files.map(file => file.path);
     const imagenesActuales = JSON.parse(req.body.imagenesActuales || '[]');
-
-    producto.imagenes.forEach(img => {
-      if (!imagenesActuales.includes(img)) {
-        const pathImg = 'backend' + img;
-        if (fs.existsSync(pathImg)) fs.unlinkSync(pathImg);
-      }
-    });
 
     producto.nombre = req.body.nombre;
     producto.descripcion = req.body.descripcion;
@@ -127,24 +124,27 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
   }
 });
 
-// Eliminar producto
+// Eliminar producto y sus imágenes de Cloudinary
 router.delete('/:id', auth, async (req, res) => {
   try {
     const producto = await Producto.findByIdAndDelete(req.params.id);
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    producto.imagenes.forEach(img => {
-      const pathImg = 'backend' + img;
-      if (fs.existsSync(pathImg)) fs.unlinkSync(pathImg);
-    });
+    // Intentar eliminar cada imagen de Cloudinary si es válida
+    for (const imageUrl of producto.imagenes) {
+      const publicId = getCloudinaryPublicId(imageUrl);
+      if (publicId) {
+        await cloudinary.uploader.destroy(publicId);
+      }
+    }
 
-    res.json({ msg: 'Producto eliminado correctamente' });
+    res.json({ msg: 'Producto e imágenes eliminados correctamente' });
   } catch (err) {
     res.status(500).json({ error: 'Error al eliminar producto' });
   }
 });
 
-// Obtener categorías, colecciones y géneros únicos con capitalización
+// Obtener opciones únicas
 router.get('/opciones/unicas', async (req, res) => {
   try {
     const productos = await Producto.find();
@@ -164,5 +164,18 @@ router.get('/opciones/unicas', async (req, res) => {
     res.status(500).json({ error: 'Error al obtener opciones' });
   }
 });
+
+// Función auxiliar para extraer el public_id de una imagen de Cloudinary
+function getCloudinaryPublicId(url) {
+  try {
+    const urlObj = new URL(url);
+    const parts = urlObj.pathname.split('/');
+    const fileName = parts.pop();
+    const publicId = fileName.substring(0, fileName.lastIndexOf('.'));
+    return parts.slice(2).join('/') + '/' + publicId; // omite el 'image/upload'
+  } catch (e) {
+    return null;
+  }
+}
 
 export default router;
