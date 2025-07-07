@@ -1,14 +1,14 @@
 import express from 'express';
 import Producto from '../models/Producto.js';
 import auth from '../middleware/authMiddleware.js';
-import cloudinary from '../config/cloudinary.js'; // ✅
+import cloudinary from '../config/cloudinary.js';
 
 import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const router = express.Router();
 
-// Configurar almacenamiento Cloudinary
+// Configuración de Cloudinary + Multer
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
@@ -22,11 +22,16 @@ const upload = multer({ storage });
 // Crear producto
 router.post('/', auth, upload.array('imagenes'), async (req, res) => {
   try {
-    const imagenes = req.files.map(file => ({
-      url: file.path,
-      public_id: file.filename
-    }));
-    const stock = typeof req.body.stock === 'string' ? JSON.parse(req.body.stock) : req.body.stock;
+    const imagenes = Array.isArray(req.files)
+      ? req.files.map(file => ({
+          url: file.path,
+          public_id: file.filename
+        }))
+      : [];
+
+    const stock = typeof req.body.stock === 'string'
+      ? JSON.parse(req.body.stock)
+      : req.body.stock;
 
     const nuevoProducto = new Producto({
       nombre: req.body.nombre,
@@ -106,11 +111,23 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
     const producto = await Producto.findById(req.params.id);
     if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
-    const nuevasImagenes = req.files.map(file => ({
-      url: file.path,
-      public_id: file.filename
-    }));
-    const imagenesActuales = JSON.parse(req.body.imagenesActuales || '[]');
+    const nuevasImagenes = Array.isArray(req.files)
+      ? req.files.map(file => ({
+          url: file.path,
+          public_id: file.filename
+        }))
+      : [];
+
+    let imagenesActuales = [];
+    try {
+      imagenesActuales = JSON.parse(req.body.imagenesActuales || '[]');
+    } catch (e) {
+      imagenesActuales = [];
+    }
+
+    const stock = typeof req.body.stock === 'string'
+      ? JSON.parse(req.body.stock)
+      : req.body.stock;
 
     producto.nombre = req.body.nombre;
     producto.descripcion = req.body.descripcion;
@@ -118,7 +135,7 @@ router.put('/:id', auth, upload.array('imagenes'), async (req, res) => {
     producto.categoria = req.body.categoria;
     producto.coleccion = req.body.coleccion;
     producto.genero = req.body.genero;
-    producto.stock = typeof req.body.stock === 'string' ? JSON.parse(req.body.stock) : req.body.stock;
+    producto.stock = stock;
     producto.imagenes = [...imagenesActuales, ...nuevasImagenes];
 
     await producto.save();
@@ -147,7 +164,7 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// Obtener opciones únicas para autocompletado
+// Opciones únicas (categorías, colecciones, géneros)
 router.get('/opciones/unicas', async (req, res) => {
   try {
     const productos = await Producto.find();
