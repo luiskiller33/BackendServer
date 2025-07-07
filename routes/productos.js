@@ -1,7 +1,8 @@
 import express from 'express';
 import Producto from '../models/Producto.js';
 import auth from '../middleware/authMiddleware.js';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../config/cloudinary.js'; // ✅
+
 import multer from 'multer';
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
