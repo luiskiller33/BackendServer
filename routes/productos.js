@@ -2,19 +2,12 @@ import express from 'express';
 import multer from 'multer';
 import Producto from '../models/Producto.js';
 import auth from '../middleware/authMiddleware.js';
-import { v2 as cloudinary } from 'cloudinary';
+import { cloudinary } from '../config/cloudinary.js'; // ✅ Corrección aquí
 import { CloudinaryStorage } from 'multer-storage-cloudinary';
 
 const router = express.Router();
 
-// Configuración de Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
-});
-
-// Almacenamiento en Cloudinary
+// ✅ Almacenamiento en Cloudinary (usando config centralizada)
 const storage = new CloudinaryStorage({
   cloudinary,
   params: {
