@@ -29,7 +29,7 @@ const productoSchema = new mongoose.Schema({
         }
       }
     ],
-    default: [] // 👈 Garantiza que siempre sea un array
+    default: []
   },
   genero: {
     type: String,
@@ -45,52 +45,13 @@ const productoSchema = new mongoose.Schema({
     trim: true
   },
   stock: {
-    S: {
-      type: Number,
-      default: 0,
-      min: 0,
-      validate: {
-        validator: Number.isInteger,
-        message: '{VALUE} debe ser un número entero'
-      }
-    },
-    M: {
-      type: Number,
-      default: 0,
-      min: 0,
-      validate: {
-        validator: Number.isInteger,
-        message: '{VALUE} debe ser un número entero'
-      }
-    },
-    L: {
-      type: Number,
-      default: 0,
-      min: 0,
-      validate: {
-        validator: Number.isInteger,
-        message: '{VALUE} debe ser un número entero'
-      }
-    },
-    XL: {
-      type: Number,
-      default: 0,
-      min: 0,
-      validate: {
-        validator: Number.isInteger,
-        message: '{VALUE} debe ser un número entero'
-      }
-    }
+    S: { type: Number, default: 0, min: 0 },
+    M: { type: Number, default: 0, min: 0 },
+    L: { type: Number, default: 0, min: 0 },
+    XL: { type: Number, default: 0, min: 0 }
   }
 }, { timestamps: true });
 
-productoSchema.pre('save', function (next) {
-  const totalStock = this.stock.S + this.stock.M + this.stock.L + this.stock.XL;
-  if (totalStock <= 0) {
-    next(new Error('El producto debe tener al menos una unidad en stock'));
-  } else {
-    next();
-  }
-});
+// ❌ Eliminado el middleware que bloquea productos con stock 0
 
 export default mongoose.model('Producto', productoSchema);

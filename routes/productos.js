@@ -1,39 +1,20 @@
 import express from 'express';
-import multer from 'multer';
-import { v2 as cloudinary } from 'cloudinary';
-import { CloudinaryStorage } from 'multer-storage-cloudinary';
 import Producto from '../models/Producto.js';
 import authMiddleware from '../middleware/authMiddleware.js';
+import upload from '../middleware/upload.js';
+import { v2 as cloudinary } from 'cloudinary';
 
 const router = express.Router();
-
-// Configurar Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
-
-// Multer con almacenamiento en Cloudinary
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: {
-    folder: 'timeless',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-  },
-});
-const upload = multer({ storage });
 
 // Crear producto
 router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
     const { nombre, descripcion, precio, categoria, coleccion, genero, stock } = req.body;
 
-    // Aseguramos que siempre haya un array de imágenes
-    const nuevasImagenes = req.files ? req.files.map(file => ({
+    const nuevasImagenes = req.files?.map(file => ({
       url: file.path,
       public_id: file.filename || file.public_id
-    })) : [];
+    })) || [];
 
     const producto = new Producto({
       nombre,
@@ -54,7 +35,7 @@ router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   }
 });
 
-// Obtener productos
+// Obtener todos los productos
 router.get('/', async (req, res) => {
   try {
     const productos = await Producto.find().sort({ createdAt: -1 });
@@ -64,7 +45,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Obtener producto por ID
+// Obtener por ID
 router.get('/:id', async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
@@ -75,19 +56,16 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Actualizar producto
+// Actualizar
 router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
     const { nombre, descripcion, precio, categoria, coleccion, genero, stock, imagenesActuales } = req.body;
-
-    // Convertir las imágenes actuales a array o dejar vacío
     const imagenesExistentes = imagenesActuales ? JSON.parse(imagenesActuales) : [];
 
-    // Procesar nuevas imágenes subidas
-    const nuevasImagenes = req.files ? req.files.map(file => ({
+    const nuevasImagenes = req.files?.map(file => ({
       url: file.path,
       public_id: file.filename || file.public_id
-    })) : [];
+    })) || [];
 
     const imagenesFinales = [...imagenesExistentes, ...nuevasImagenes];
 
@@ -113,17 +91,14 @@ router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) =>
   }
 });
 
-// Eliminar producto
+// Eliminar
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
     if (!producto) return res.status(404).json({ mensaje: 'Producto no encontrado' });
 
-    // Eliminar imágenes de Cloudinary si existen
-    if (producto.imagenes && producto.imagenes.length > 0) {
-      for (const img of producto.imagenes) {
-        await cloudinary.uploader.destroy(img.public_id);
-      }
+    for (const img of producto.imagenes) {
+      await cloudinary.uploader.destroy(img.public_id);
     }
 
     await producto.deleteOne();
@@ -133,14 +108,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
   }
 });
 
-// Ruta para obtener opciones únicas de categoría y colección
+// Categorías y colecciones únicas
 router.get('/opciones/unicas', async (req, res) => {
   try {
     const productos = await Producto.find({}, 'categoria coleccion');
-
     const categorias = [...new Set(productos.map(p => p.categoria).filter(Boolean))];
     const colecciones = [...new Set(productos.map(p => p.coleccion).filter(Boolean))];
-
     res.json({ categorias, colecciones });
   } catch (err) {
     console.error('❌ Error en /opciones/unicas:', err);
