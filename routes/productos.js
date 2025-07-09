@@ -3,6 +3,7 @@ import Producto from '../models/Producto.js';
 import authMiddleware from '../middleware/authMiddleware.js';
 import upload from '../middleware/upload.js';
 import { v2 as cloudinary } from 'cloudinary';
+import fs from 'fs';
 
 const router = express.Router();
 
@@ -11,10 +12,21 @@ router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
     const { nombre, descripcion, precio, categoria, coleccion, genero, stock } = req.body;
 
-    const nuevasImagenes = req.files?.map(file => ({
-      url: file.path,
-      public_id: file.filename || file.public_id
-    })) || [];
+    const nuevasImagenes = [];
+    for (const file of req.files || []) {
+      const result = await cloudinary.uploader.upload(file.path);
+      nuevasImagenes.push({
+        url: result.secure_url,
+        public_id: result.public_id
+      });
+      try {
+        if (file.path && fs.existsSync(file.path)) {
+          fs.unlinkSync(file.path);
+        }
+      } catch (e) {
+        console.warn('No se pudo borrar archivo temporal:', file.path);
+      }
+    }
 
     const producto = new Producto({
       nombre,
@@ -35,15 +47,55 @@ router.post('/', authMiddleware, upload.array('imagenes'), async (req, res) => {
   }
 });
 
-// Obtener todos los productos
+// Obtener productos con filtros, búsqueda y paginación
+// Obtener productos con filtros, búsqueda y paginación
 router.get('/', async (req, res) => {
   try {
-    const productos = await Producto.find().sort({ createdAt: -1 });
-    res.json(productos);
+    let {
+      page = 1,
+      limit = 10,
+      genero,
+      categoria,
+      coleccion,
+      busqueda,
+      talla
+    } = req.query;
+
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    const query = {};
+
+    if (genero) query.genero = genero;
+    if (categoria) query.categoria = categoria;
+    if (coleccion) query.coleccion = coleccion;
+    if (busqueda) query.nombre = { $regex: busqueda, $options: 'i' };
+
+    // Filtro por talla (stock.{talla} > 0)
+    if (talla && ['S', 'M', 'L', 'XL'].includes(talla)) {
+      query[`stock.${talla}`] = { $gt: 0 };
+    }
+
+    const total = await Producto.countDocuments(query);
+    const productos = await Producto.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    const totalPages = Math.ceil(total / limit);
+
+    res.json({
+      productos,
+      total,
+      totalPages,
+      currentPage: page
+    });
   } catch (err) {
-    res.status(500).json({ mensaje: 'Error al obtener productos' });
+    console.error('❌ Error en GET /productos:', err);
+    res.status(500).json({ mensaje: 'Error al obtener productos', error: err.message });
   }
 });
+
 
 // Obtener por ID
 router.get('/:id', async (req, res) => {
@@ -56,18 +108,42 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Actualizar
+// Actualizar producto
+// Actualizar producto
 router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) => {
   try {
-    const { nombre, descripcion, precio, categoria, coleccion, genero, stock, imagenesActuales } = req.body;
-    const imagenesExistentes = imagenesActuales ? JSON.parse(imagenesActuales) : [];
+    let {
+      nombre,
+      descripcion,
+      precio,
+      categoria,
+      coleccion,
+      genero,
+      stock,
+      imagenesActuales
+    } = req.body;
 
-    const nuevasImagenes = req.files?.map(file => ({
-      url: file.path,
-      public_id: file.filename || file.public_id
-    })) || [];
+    // Asegurarse que sean objetos si vienen como string
+    stock = typeof stock === 'string' ? JSON.parse(stock) : stock;
+    imagenesActuales = imagenesActuales ? (
+      typeof imagenesActuales === 'string' ? JSON.parse(imagenesActuales) : imagenesActuales
+    ) : [];
 
-    const imagenesFinales = [...imagenesExistentes, ...nuevasImagenes];
+    const nuevasImagenes = [];
+
+    for (const file of req.files || []) {
+      const result = await cloudinary.uploader.upload(file.path);
+      nuevasImagenes.push({
+        url: result.secure_url,
+        public_id: result.public_id
+      });
+
+      if (file.path && fs.existsSync(file.path)) {
+        fs.unlinkSync(file.path);
+      }
+    }
+
+    const imagenesFinales = [...imagenesActuales, ...nuevasImagenes];
 
     const productoActualizado = await Producto.findByIdAndUpdate(
       req.params.id,
@@ -78,7 +154,7 @@ router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) =>
         categoria,
         coleccion,
         genero,
-        stock: JSON.parse(stock),
+        stock,
         imagenes: imagenesFinales
       },
       { new: true }
@@ -87,11 +163,14 @@ router.put('/:id', authMiddleware, upload.array('imagenes'), async (req, res) =>
     res.json(productoActualizado);
   } catch (err) {
     console.error('❌ Error al actualizar producto:', err);
-    res.status(500).json({ mensaje: 'Error al actualizar el producto', error: err.message });
+    res.status(500).json({
+      mensaje: 'Error al actualizar el producto',
+      error: err.message
+    });
   }
 });
 
-// Eliminar
+// Eliminar producto
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
