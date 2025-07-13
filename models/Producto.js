@@ -19,14 +19,23 @@ const productoSchema = new mongoose.Schema({
   imagenes: {
     type: [
       {
-        url: {
-          type: String,
-          required: true
-        },
-        public_id: {
-          type: String,
-          required: true
-        }
+        url: { type: String, required: true },
+        public_id: { type: String, required: true }
+      }
+    ],
+    default: []
+  },
+  colores: {
+    type: [
+      {
+        nombre: { type: String, required: true },
+        codigoHex: { type: String, required: true },
+        imagenes: [
+          {
+            url: { type: String, required: true },
+            public_id: { type: String, required: true }
+          }
+        ]
       }
     ],
     default: []
@@ -49,9 +58,18 @@ const productoSchema = new mongoose.Schema({
     M: { type: Number, default: 0, min: 0 },
     L: { type: Number, default: 0, min: 0 },
     XL: { type: Number, default: 0, min: 0 }
+  },
+  orden: {
+    type: Number,
+    default: 0
   }
 }, { timestamps: true });
 
-// ❌ Eliminado el middleware que bloquea productos con stock 0
+productoSchema.index({ nombre: 'text' });
+productoSchema.index({ categoria: 1 });
+productoSchema.index({ coleccion: 1 });
+productoSchema.index({ genero: 1 });
+productoSchema.index({ orden: 1 });
+productoSchema.index({ createdAt: -1 });
 
 export default mongoose.model('Producto', productoSchema);
