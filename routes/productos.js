@@ -84,6 +84,7 @@ router.post('/', authMiddleware, upload.any(), async (req, res) => {
 });
 
 // Obtener productos con filtros, búsqueda y paginación
+// En tu archivo de rutas de productos
 router.get('/', async (req, res) => {
   try {
     let {
@@ -104,13 +105,29 @@ router.get('/', async (req, res) => {
 
     const query = {};
 
-    if (genero) query.genero = genero;
-    if (categoria) query.categoria = categoria;
-    if (coleccion) query.coleccion = coleccion;
+    // Manejar filtros múltiples
+    if (genero) {
+      const generos = genero.split(',');
+      query.genero = { $in: generos };
+    }
+    
+    if (categoria) {
+      const categorias = categoria.split(',');
+      query.categoria = { $in: categorias };
+    }
+    
+    if (coleccion) {
+      const colecciones = coleccion.split(',');
+      query.coleccion = { $in: colecciones };
+    }
+
     if (busqueda) query.nombre = { $regex: busqueda, $options: 'i' };
 
-    if (talla && ['S', 'M', 'L', 'XL'].includes(talla)) {
-      query[`stock.${talla}`] = { $gt: 0 };
+    // Manejar múltiples tallas
+    if (talla) {
+      const tallas = talla.split(',');
+      const tallaQueries = tallas.map(t => ({ [`stock.${t}`]: { $gt: 0 } }));
+      query.$or = tallaQueries;
     }
 
     if (stockMin !== undefined || stockMax !== undefined) {
@@ -303,5 +320,49 @@ router.get('/todos', async (req, res) => {
     res.status(500).json({ mensaje: 'Error del servidor al obtener los productos' });
   }
 });
+// Opciones filtradas según filtros aplicados
+router.get('/opciones/filtradas', async (req, res) => {
+  try {
+    const { categoria, genero } = req.query;
+    
+    // Construir query base
+    const query = {};
+    
+    if (categoria) {
+      const categorias = categoria.split(',');
+      query.categoria = { $in: categorias };
+    }
+    
+    if (genero) {
+      const generos = genero.split(',');
+      query.genero = { $in: generos };
+    }
 
+    // Obtener productos que cumplen los filtros
+    const productos = await Producto.find(query, 'categoria coleccion genero stock');
+    
+    // Extraer opciones únicas de los productos filtrados
+    const categorias = [...new Set(productos.map(p => p.categoria).filter(Boolean))];
+    const colecciones = [...new Set(productos.map(p => p.coleccion).filter(Boolean))];
+    const generos = [...new Set(productos.map(p => p.genero).filter(Boolean))];
+    
+    // Extraer tallas disponibles de los productos filtrados
+    const tallasSet = new Set();
+    productos.forEach(producto => {
+      if (producto.stock) {
+        Object.keys(producto.stock).forEach(talla => {
+          if (producto.stock[talla] > 0) {
+            tallasSet.add(talla);
+          }
+        });
+      }
+    });
+    const tallas = Array.from(tallasSet);
+    
+    res.json({ categorias, colecciones, generos, tallas });
+  } catch (err) {
+    console.error('❌ Error en /opciones/filtradas:', err);
+    res.status(500).json({ mensaje: 'Error al obtener opciones filtradas' });
+  }
+});
 export default router;

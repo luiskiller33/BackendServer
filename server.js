@@ -10,7 +10,7 @@ import authRoutes from './routes/auth.js';
 import clientesRoutes from './routes/clientes.js';
 import ventasRoutes from './routes/ventas.js';
 import guiasRoutes from './routes/guias.js';
-
+import correosRoutes from './routes/correos.js';
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,7 +49,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/clientes', clientesRoutes);
 app.use('/api/ventas', ventasRoutes);
 app.use('/guiatallas', guiasRoutes);
-
+// En tu app.js o server.js
+app.use('/api', correosRoutes);
 // ✅ Conexión a MongoDB
 mongoose.connect(process.env.MONGO_URI, {
   useNewUrlParser: true,
