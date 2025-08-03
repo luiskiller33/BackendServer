@@ -11,7 +11,16 @@ const normalizarTexto = (texto) =>
 // 🔹 Crear venta
 router.post('/', async (req, res) => {
   try {
-    const { cliente, nombreCliente, productos } = req.body;
+    const { 
+      cliente, 
+      nombreCliente, 
+      correo,           // ✅ Nuevo
+      telefono,         // ✅ Nuevo
+      direccion,        // ✅ Nuevo
+      ubicacion,        // ✅ Nuevo
+      productos,
+      incluyeIVA        // ✅ Nuevo
+    } = req.body;
 
     let total = 0;
     const productosProcesados = [];
@@ -34,11 +43,12 @@ router.post('/', async (req, res) => {
 
       await producto.save();
 
-      // ✅ Incluir campos limpios y normalizados
+      // ✅ Incluir campos limpios y normalizados + color
       productosProcesados.push({
         productoId: producto._id,
         nombre: producto.nombre?.trim(),
         talla: item.talla,
+        color: item.color,                    // ✅ Nuevo
         cantidad: item.cantidad,
         precioUnitario,
         subtotal,
@@ -51,8 +61,13 @@ router.post('/', async (req, res) => {
     const venta = new Venta({
       cliente,
       nombreCliente: nombreCliente?.trim() || 'Cliente anónimo',
+      correo: correo?.trim(),               // ✅ Nuevo
+      telefono: telefono?.trim(),           // ✅ Nuevo
+      direccion: direccion?.trim(),         // ✅ Nuevo
+      ubicacion: ubicacion?.trim(),         // ✅ Nuevo
       productos: productosProcesados,
-      total
+      total,
+      incluyeIVA: incluyeIVA || false       // ✅ Nuevo
     });
 
     await venta.save();

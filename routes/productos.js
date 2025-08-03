@@ -4,6 +4,7 @@ import authMiddleware from '../middleware/authMiddleware.js';
 import upload from '../middleware/upload.js';
 import { v2 as cloudinary } from 'cloudinary';
 import fs from 'fs';
+import { Parser } from 'json2csv';
 
 const router = express.Router();
 
@@ -83,13 +84,50 @@ router.post('/', authMiddleware, upload.any(), async (req, res) => {
   }
 });
 
+
+router.post('/exportar', authMiddleware, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ mensaje: 'No se enviaron IDs para exportar' });
+    }
+
+    const productos = await Producto.find({ _id: { $in: ids } }).lean();
+
+    const fields = [
+      { label: 'Nombre', value: 'nombre' },
+      { label: 'Precio', value: 'precio' },
+      { label: 'Género', value: 'genero' },
+      { label: 'Categoría', value: 'categoria' },
+      { label: 'Colección', value: 'coleccion' },
+      { label: 'Estado', value: 'estado' },
+      { label: 'Stock S', value: row => row.stock?.S || 0 },
+      { label: 'Stock M', value: row => row.stock?.M || 0 },
+      { label: 'Stock L', value: row => row.stock?.L || 0 },
+      { label: 'Stock XL', value: row => row.stock?.XL || 0 },
+      { label: 'Total', value: row => (row.stock?.S || 0) + (row.stock?.M || 0) + (row.stock?.L || 0) + (row.stock?.XL || 0) }
+    ];
+
+    const parser = new Parser({ fields });
+    const csv = parser.parse(productos);
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('productos_seleccionados.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error al exportar productos seleccionados:', error);
+    res.status(500).json({ mensaje: 'Error al exportar productos seleccionados' });
+  }
+});
 // Obtener productos con filtros, búsqueda y paginación
 // En tu archivo de rutas de productos
+// Obtener productos con filtros, búsqueda y paginación
 router.get('/', async (req, res) => {
   try {
     let {
       page = 1,
       limit = 10,
+      estado = 'publicado',
       genero,
       categoria,
       coleccion,
@@ -103,27 +141,27 @@ router.get('/', async (req, res) => {
     page = parseInt(page);
     limit = parseInt(limit);
 
-    const query = {};
+    const query = { estado };
 
-    // Manejar filtros múltiples
     if (genero) {
       const generos = genero.split(',');
       query.genero = { $in: generos };
     }
-    
+
     if (categoria) {
       const categorias = categoria.split(',');
       query.categoria = { $in: categorias };
     }
-    
+
     if (coleccion) {
       const colecciones = coleccion.split(',');
       query.coleccion = { $in: colecciones };
     }
 
-    if (busqueda) query.nombre = { $regex: busqueda, $options: 'i' };
+    if (busqueda) {
+      query.nombre = { $regex: busqueda, $options: 'i' };
+    }
 
-    // Manejar múltiples tallas
     if (talla) {
       const tallas = talla.split(',');
       const tallaQueries = tallas.map(t => ({ [`stock.${t}`]: { $gt: 0 } }));
@@ -141,10 +179,12 @@ router.get('/', async (req, res) => {
       };
     }
 
+    // ✅ ORDENAMIENTO ESTABLE PARA PAGINACIÓN FIABLE
     let sortCriteria = {};
     if (ordenFecha === 'asc') sortCriteria.createdAt = 1;
     else if (ordenFecha === 'desc') sortCriteria.createdAt = -1;
-    else sortCriteria.updatedAt = -1;
+    else sortCriteria = { createdAt: -1 };
+ // ✅ aquí está el cambio importante
 
     const total = await Producto.countDocuments(query);
     const productos = await Producto.find(query)
@@ -161,6 +201,7 @@ router.get('/', async (req, res) => {
     res.status(500).json({ mensaje: 'Error al obtener productos', error: err.message });
   }
 });
+
 
 router.get('/:id', async (req, res) => {
   try {
@@ -310,6 +351,35 @@ router.patch('/reordenar', authMiddleware, async (req, res) => {
   }
 });
 
+// Agregar este endpoint al archivo existente
+router.patch('/:id/campo', authMiddleware, async (req, res) => {
+  try {
+    const { campo, valor } = req.body;
+    
+    // Validar campos permitidos
+    const camposPermitidos = ['categoria', 'coleccion', 'genero'];
+    if (!camposPermitidos.includes(campo)) {
+      return res.status(400).json({ mensaje: 'Campo no permitido para edición rápida' });
+    }
+    
+    const updateData = { [campo]: valor.trim() };
+    
+    const producto = await Producto.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    );
+    
+    if (!producto) {
+      return res.status(404).json({ mensaje: 'Producto no encontrado' });
+    }
+    
+    res.json(producto);
+  } catch (error) {
+    console.error('Error al actualizar campo:', error);
+    res.status(500).json({ mensaje: 'Error al actualizar campo' });
+  }
+});
 // Obtener todos los productos sin paginación
 router.get('/todos', async (req, res) => {
   try {
@@ -318,6 +388,145 @@ router.get('/todos', async (req, res) => {
   } catch (error) {
     console.error('❌ Error al obtener todos los productos:', error);
     res.status(500).json({ mensaje: 'Error del servidor al obtener los productos' });
+  }
+});
+
+// Actualizar stock
+router.patch('/:id/stock', authMiddleware, async (req, res) => {
+  try {
+    const { stock } = req.body;
+    
+    const producto = await Producto.findByIdAndUpdate(
+      req.params.id,
+      { stock },
+      { new: true }
+    );
+    
+    if (!producto) {
+      return res.status(404).json({ mensaje: 'Producto no encontrado' });
+    }
+    
+    res.json(producto);
+  } catch (error) {
+    console.error('Error al actualizar stock:', error);
+    res.status(500).json({ mensaje: 'Error al actualizar stock' });
+  }
+});
+
+// Actualizar estado
+router.patch('/:id/estado', authMiddleware, async (req, res) => {
+  try {
+    const { estado } = req.body;
+    
+    const producto = await Producto.findByIdAndUpdate(
+      req.params.id,
+      { estado },
+      { new: true }
+    );
+    
+    if (!producto) {
+      return res.status(404).json({ mensaje: 'Producto no encontrado' });
+    }
+    
+    res.json(producto);
+  } catch (error) {
+    console.error('Error al actualizar estado:', error);
+    res.status(500).json({ mensaje: 'Error al actualizar estado' });
+  }
+});
+
+// Acciones masivas
+router.patch('/masivo', authMiddleware, async (req, res) => {
+  try {
+    const { ids, campo, valor } = req.body;
+
+    if (!campo || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ mensaje: 'Datos inválidos para acción masiva' });
+    }
+
+    const updateData = { [campo]: valor };
+
+    // ✅ Si cambia el estado, actualiza también updatedAt manualmente
+    if (campo === 'estado') {
+      updateData.updatedAt = new Date();
+    }
+
+    const resultado = await Producto.updateMany(
+      { _id: { $in: ids } },
+      updateData
+    );
+
+    // ✅ Si se están publicando productos, reordenarlos automáticamente
+    if (campo === 'estado' && valor === 'publicado') {
+      const productos = await Producto.find({ _id: { $in: ids } }).sort({ updatedAt: -1 });
+      const baseOrden = Date.now(); // puedes usar otro criterio
+
+      const actualizaciones = productos.map((producto, index) =>
+        Producto.findByIdAndUpdate(producto._id, { orden: baseOrden + index })
+      );
+
+      await Promise.all(actualizaciones);
+    }
+
+    res.json({
+      mensaje: `${resultado.modifiedCount} productos actualizados`,
+      modificados: resultado.modifiedCount
+    });
+  } catch (error) {
+    console.error('Error en acción masiva:', error);
+    res.status(500).json({ mensaje: 'Error en acción masiva' });
+  }
+});
+
+// Eliminar masivo
+router.delete('/masivo', authMiddleware, async (req, res) => {
+  try {
+    const { ids } = req.body;
+    
+    const resultado = await Producto.deleteMany({
+      _id: { $in: ids }
+    });
+    
+    res.json({ 
+      mensaje: `${resultado.deletedCount} productos eliminados`,
+      eliminados: resultado.deletedCount 
+    });
+  } catch (error) {
+    console.error('Error al eliminar productos:', error);
+    res.status(500).json({ mensaje: 'Error al eliminar productos' });
+  }
+});
+ // Asegúrate de instalar json2csv: npm i json2csv
+
+// Exportar productos a CSV
+router.get('/exportar', authMiddleware, async (req, res) => {
+  try {
+    const productos = await Producto.find({}).lean();
+
+    // Define los campos que quieres exportar
+    const fields = [
+      { label: 'Nombre', value: 'nombre' },
+      { label: 'Precio', value: 'precio' },
+      { label: 'Género', value: 'genero' },
+      { label: 'Categoría', value: 'categoria' },
+      { label: 'Colección', value: 'coleccion' },
+      { label: 'Estado', value: 'estado' },
+      { label: 'Stock S', value: row => row.stock?.S || 0 },
+      { label: 'Stock M', value: row => row.stock?.M || 0 },
+      { label: 'Stock L', value: row => row.stock?.L || 0 },
+      { label: 'Stock XL', value: row => row.stock?.XL || 0 },
+      { label: 'Total', value: row => (row.stock?.S || 0) + (row.stock?.M || 0) + (row.stock?.L || 0) + (row.stock?.XL || 0) }
+    ];
+
+    const parser = new Parser({ fields });
+    const csv = parser.parse(productos);
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment('productos.csv');
+    res.send(csv);
+  } catch (error) {
+    console.error('Error al exportar productos:', error);
+    res.status(500).json({ mensaje: 'Error al exportar productos' });
   }
 });
 // Opciones filtradas según filtros aplicados

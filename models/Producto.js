@@ -59,6 +59,11 @@ const productoSchema = new mongoose.Schema({
     L: { type: Number, default: 0, min: 0 },
     XL: { type: Number, default: 0, min: 0 }
   },
+  estado: {
+    type: String,
+    enum: ['borrador', 'publicado', 'archivado'],
+    default: 'borrador'
+  },
   orden: {
     type: Number,
     default: 0
@@ -71,5 +76,9 @@ productoSchema.index({ coleccion: 1 });
 productoSchema.index({ genero: 1 });
 productoSchema.index({ orden: 1 });
 productoSchema.index({ createdAt: -1 });
+productoSchema.index({ estado: 1 });
+
+// ✅ Índice compuesto para paginación estable
+productoSchema.index({ estado: 1, orden: 1, updatedAt: -1, _id: 1 });
 
 export default mongoose.model('Producto', productoSchema);
