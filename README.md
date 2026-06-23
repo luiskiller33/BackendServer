@@ -1,4 +1,4 @@
-# ⚙️ Backend - Timeless
+# ⚙️ Backend - Timeless(Refactorizado con codex)
 
 Este es el **backend** de la tienda de ropa **Timeless**, encargado de la API REST, la base de datos, autenticación y **notificaciones por correo** al empresario cuando se registra una venta/pedido.
 
